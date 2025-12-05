@@ -91,12 +91,38 @@ public class MLFQScheduler {
 
             p.setFinishedAt(currentTime);
             currentProcess = null;
+            printProcessStatuses(p);
         } else if (p.isQuantumExhausted()) {
 
             p.demote();
             queues[p.currentQueue].offer(p);
             currentProcess = null;
         }
+    }
+    private void printProcessStatuses(Process completedProcess) {
+        System.out.println("[Time " + currentTime + "] Process '" + completedProcess.getName() + "' completed. Statuses:");
+        for (Process p : allProcesses) {
+            String status;
+            if (p.getRemainingTime() == 0) {
+                status = "terminated";
+            } else if (p == currentProcess) {
+                status = "running";
+            } else if (isInQueues(p)) {
+                status = "ready";
+            } else {
+                status = "waiting";
+            }
+
+            System.out.println(String.format("  %s : %s", p.getName(), status));
+        }
+        System.out.println();
+    }
+        private boolean isInQueues(Process p) {
+        for (Queue<Process> queue : queues) {
+            if (queue.contains(p))
+                return true;
+        }
+        return false;
     }
 
     private void performPriorityBoost() {
