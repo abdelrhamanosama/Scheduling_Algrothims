@@ -1,4 +1,5 @@
 public class Process {
+    private static int counter = 0;
     private int processId;
     private int arrivalTime;
     private int burstTime;
@@ -7,7 +8,7 @@ public class Process {
     private int waitingTime;
     private int priority;
     private String name;
-    private final ProcessType Type;
+    private final ProcessType type;
     // New fields from second class
     private int startedAt = -1;
     private int finishedAt;
@@ -16,9 +17,23 @@ public class Process {
     public int currentQueue = 0;
     public int quantumUsed = 0;
 
-    public Process(String name, int processId, int arrivalTime, int burstTime, int priority, ProcessType processType) {
+    public Process(int arrivalTime, int burstTime, ProcessType type) {
+        processId = counter++;
+        this.arrivalTime = arrivalTime;
+        this.finishedAt = arrivalTime;
+        this.burstTime = burstTime;
+        this.remainingTime = burstTime;
+        this.type = type;
+
+        this.turnaroundTime = 0;        
+        this.startedAt = 0;
+        this.waitingTime = 0;
+        this.responseTime = -1;
+    }
+
+    public Process(String name, int arrivalTime, int burstTime, int priority, ProcessType processType) {
+        processId = counter++;
         this.name = name;
-        this.processId = processId;
         this.arrivalTime = arrivalTime;
         this.burstTime = burstTime;
         this.remainingTime = burstTime;
@@ -26,7 +41,7 @@ public class Process {
         this.finishedAt = 0;
         this.turnaroundTime = 0;
         this.waitingTime = 0;
-        this.Type = processType;
+        this.type = processType;
     }
 
     // Getters
@@ -71,7 +86,7 @@ public class Process {
     }
 
      public ProcessType getType() {
-        return Type;
+        return type;
     }
 
     public int getFinishedAt() {
