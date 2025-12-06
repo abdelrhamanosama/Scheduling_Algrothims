@@ -33,7 +33,6 @@ public class Schudular {
 
                 processes.add(new Process(
                         name,
-                        processID++,
                         arrivalTime,
                         burstTime,
                         priorityTime,
