@@ -1,6 +1,8 @@
 import java.util.LinkedList;
 import java.util.Queue;
 import java.util.List;
+import java.util.PriorityQueue;
+import java.util.Comparator;
 
 class RoundRobinScheduler {
     private Queue<Process> readyQueue;
@@ -26,141 +28,89 @@ class RoundRobinScheduler {
         System.out.println("╔════════════════════════════════════════════════╗");
         System.out.println("║      Round Robin Scheduler Simulation          ║");
         System.out.println("╚════════════════════════════════════════════════╝\n");
-        
-        // Sort processes by arrival time
-        processes.sort((p1, p2) -> Integer.compare(p1.getArrivalTime(), p2.getArrivalTime()));
-        
-        // Start two threads: one for adding processes, one for simulation
-        Thread addingThread = new Thread(this::addProcessesThread, "Process-Adding-Thread");
-        Thread simulationThread = new Thread(this::simulationThread, "Simulation-Thread");
-        
-        addingThread.start();
-        simulationThread.start();
-        
-        try {
-            addingThread.join();
-            simulationThread.join();
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
+
+        // Use a priority queue for future arrivals (ordered by arrival time then id)
+        PriorityQueue<Process> arrivals = new PriorityQueue<>(
+            Comparator.comparingInt(Process::getArrivalTime)
+                      .thenComparingInt(Process::getProcessId)
+        );
+        arrivals.addAll(processes);
+
+        int currentTime = 0;
+        int completedProcesses = 0;
+
+        // move initially available processes (arrival time <= 0)
+        while (!arrivals.isEmpty() && arrivals.peek().getArrivalTime() <= currentTime) {
+            readyQueue.add(arrivals.poll());
         }
-        
+
+        while (completedProcesses < processes.size()) {
+            if (!readyQueue.isEmpty()) {
+                Process proc = readyQueue.poll();
+                previousProcess = currentProcess;
+                currentProcess = proc;
+
+                // context switch if switching between processes
+                if (previousProcess != null && currentProcess != null && previousProcess.getProcessId() != currentProcess.getProcessId()) {
+                    printContextSwitch(currentTime);
+                    currentTime += contextSwitch;
+                    ctxSwitchTime += contextSwitch;
+                }
+
+                if (proc.getResponseTime() == -1) {
+                    proc.setStartedAt(currentTime);
+                    proc.setResponseTime(currentTime - proc.getArrivalTime());
+                }
+
+                int execTime = Math.min(timeQuantum, proc.getRemainingTime());
+                int start = currentTime;
+                proc.setRemainingTime(proc.getRemainingTime() - execTime);
+                currentTime += execTime;
+                busyTime += execTime;
+
+                System.out.printf("Time %d-%d: Executing Process %d for %d units\n", start, currentTime, proc.getProcessId(), execTime);
+                System.out.println("===");
+                try { Thread.sleep(500); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+
+                // move newly arrived processes into ready queue
+                while (!arrivals.isEmpty() && arrivals.peek().getArrivalTime() <= currentTime) {
+                    readyQueue.add(arrivals.poll());
+                }
+
+                if (proc.getRemainingTime() > 0) {
+                    readyQueue.add(proc);
+                } else {
+                    proc.setFinishedAt(currentTime);
+                    proc.calculateAllTimes();
+                    finishedProcesses.add(proc);
+                    completedProcesses++;
+                    System.out.printf("Time %d: Process %d completed\n", currentTime, proc.getProcessId());
+                    System.out.println("===");
+                    try { Thread.sleep(500); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+                }
+            } else {
+                // no ready processes: advance to next arrival
+                if (!arrivals.isEmpty()) {
+                    int nextArrival = arrivals.peek().getArrivalTime();
+                    int old = currentTime;
+                    currentTime = Math.max(currentTime + 1, nextArrival);
+                    idleTime += Math.max(0, currentTime - old);
+
+                    while (!arrivals.isEmpty() && arrivals.peek().getArrivalTime() <= currentTime) {
+                        readyQueue.add(arrivals.poll());
+                    }
+                } else {
+                    break; // nothing left
+                }
+            }
+
+            try { Thread.sleep(10); } catch (InterruptedException e) { Thread.currentThread().interrupt(); break; }
+        }
+
+        System.out.println("\nSimulation completed.");
         printStatistics();
     }
 
-    private void addProcessesThread() {
-        // This thread manages adding processes to the ready queue based on arrival time
-        int index = 0;
-        int currentTime = 0;
-        
-        while (index < processes.size()) {
-            Process process = processes.get(index);
-            if (process.getArrivalTime() <= currentTime) {
-                synchronized (readyQueue) {
-                    readyQueue.add(process);
-                    index++;
-                }
-            }
-            currentTime++;
-            
-            try {
-                Thread.sleep(10);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                break;
-            }
-        }
-    }
-
-    private void simulationThread() {
-        // This thread handles the actual scheduling simulation
-        int currentTime = 0;
-        int completedProcesses = 0;
-        int processIndex = 0;
-
-        while (completedProcesses < processes.size()) {
-            synchronized (readyQueue) {
-                // Add any processes that have arrived by current time
-                while (processIndex < processes.size() && 
-                       processes.get(processIndex).getArrivalTime() <= currentTime) {
-                    readyQueue.add(processes.get(processIndex));
-                    processIndex++;
-                }
-
-                if (!readyQueue.isEmpty()) {
-                    Process currentProc = readyQueue.poll();
-                    previousProcess = currentProcess;
-                    currentProcess = currentProc;
-
-                    // account for context switch if switching between different processes
-                    if (previousProcess != null && currentProcess != null &&
-                        previousProcess.getProcessId() != currentProcess.getProcessId()) {
-                        printContextSwitch(currentTime);
-                        currentTime += contextSwitch;
-                        ctxSwitchTime += contextSwitch;
-                    }
-
-                    int execTime = Math.min(timeQuantum, currentProc.getRemainingTime());
-                    int startTime = currentTime;
-                    
-                    // Set response time if first execution
-                    if (currentProc.getResponseTime() == -1) {
-                        currentProc.setStartedAt(currentTime);
-                        currentProc.setResponseTime(currentTime - currentProc.getArrivalTime());
-                    }
-
-                    // Execute for execTime
-                    currentProc.setRemainingTime(currentProc.getRemainingTime() - execTime);
-                    currentTime += execTime;
-                    // CPU busy time increases by execTime
-                    busyTime += execTime;
-
-                    System.out.printf("Time %d-%d: Executing Process %d for %d units\n", 
-                                      startTime, currentTime, currentProc.getProcessId(), execTime);
-                    System.out.println("===");
-                    
-                    try {
-                        Thread.sleep(500); // pause 500 milliseconds for visualization
-                    } catch (InterruptedException e) {
-                        Thread.currentThread().interrupt();
-                    }
-
-                    if (currentProc.getRemainingTime() > 0) {
-                        readyQueue.add(currentProc);
-                    } else {
-                        currentProc.setFinishedAt(currentTime);
-                        // Use Process methods to calculate times
-                        currentProc.calculateAllTimes();
-                        completedProcesses++;
-                        finishedProcesses.add(currentProc);
-                        System.out.printf("Time %d: Process %d completed\n", currentTime, currentProc.getProcessId());
-                        System.out.println("===");
-                        try {
-                            Thread.sleep(500); // pause 500 milliseconds for visualization
-                        } catch (InterruptedException e) {
-                            Thread.currentThread().interrupt();
-                        }
-                    }
-                } else {
-                    // Ready queue is empty, advance time to next arrival
-                    if (processIndex < processes.size()) {
-                        int old = currentTime;
-                        currentTime = processes.get(processIndex).getArrivalTime();
-                        // account for idle time (fast-forward)
-                        idleTime += Math.max(0, currentTime - old);
-                    }
-                }
-            }
-
-            try {
-                Thread.sleep(10); // Small delay to allow adding thread to work
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                break;
-            }
-        }
-        
-        System.out.println("\nSimulation completed.");
-    }
 
     private void printContextSwitch(int currentTime) {
         String ctxSwitch = String.format(
